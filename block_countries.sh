@@ -25,41 +25,56 @@ ipt() {
   echo -e "ipt\n"
 }
 
-fwd() {
+fwc() {
 
-  IFS=" "
-  for c  in $BLOCK_COUNTRIES ; do
+  IFS=","
+  for c  in $COUNTRY_LIST ; do
+    zone="`echo $c|cut -d':' -f1`"
+    zone_name="`echo $c|cut -d':' -f2`"
+
     # local zone file
-    tDB=$ZONEROOT/$c.zone
+    tDB=$DL/$zone.zone
    
     # get fresh zone file
-    $WGET -O $tDB $DLROOT/$c.zone
+    $WGET -O $tDB $DLROOT/$zone.zone
    
-    # country specific log message
-    SPAMDROPMSG="$c Country Drop "
+    $FWC --permanent --delete-zone=$zone
    
     # get 
     BADIPS=$(egrep -v "^#|^$" $tDB)
-    for ipblock in $BADIPS; do
-      echo -e "$FWC --permanent --add-rich-rule=\"rule family='ipv4' source address='$ipblock' reject\""
+    
+    echo -e "Creating new zone $zone\n"
+    $FWC --permanent --new-zone="$zone"
+    $FWC --permanent --zone=$zone --set-target="DROP"
+    $FWC --permanent --zone=$zone --set-short="$zone_name"
+    $FWC --permanent --zone=$zone --set-description="Unsolicited incoming network packets from $zone_name are dropped. Incoming packets that are related to outgoing network connections are accepted. Outgoing network connections are allowed."
 
+    unset IFS
+    for ipblock in $BADIPS; do
+      echo "$zone $ipblock   "
+      $FWC --permanent --zone=$zone --add-source=$ipblock
     done
   done
-   
+
+  $FWC --set-default-zone=$zone
+  $FWC --reload
+
   # Drop everything 
 
 }
 
-# create a dir
-[ ! -d $DL ] && /bin/mkdir -p $DL
-
 if [ -n "$FWC" ] ; then
-  fwd() 
-else if [ -n "$IPT" ] ; then
-
+  fwc
+elif [ -n "$IPT" ] ; then
+  ipt
 else 
   echo -e "Error: You have not defined which version of \n\n"
-  usage();
+  usage
 fi
 
 exit 0
+
+
+
+
+
